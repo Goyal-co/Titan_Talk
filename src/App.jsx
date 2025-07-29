@@ -5,7 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import AdminDashboard from "./pages/AdminDashboard";
 import UserDashboard from "./pages/UserDashboard";
 import TeamManagement from "./pages/TeamManagement";
-import { ADMIN_EMAIL } from "./constants/userRoles";
+import { ADMIN_EMAILS } from "./constants/userRoles";
 import ProsConsManager from './pages/ProsConsManager';
 
 export default function App() {
@@ -26,7 +26,7 @@ export default function App() {
     // Check if this email exists in the DB
     const matchedUser = memberList.find((m) => m.email === email);
 
-    if (email === ADMIN_EMAIL) {
+    if (ADMIN_EMAILS.includes(email)) {
       setUser({ ...decoded, name: decoded.name, role: "admin" });
     } else if (matchedUser) {
       setUser({
