@@ -1,4 +1,6 @@
-// export const ADMIN_EMAIL = "pratham.goyalhariyana@gmail.com";
-export const ADMIN_EMAIL = "avularudrasekharreddy@gmail.com";
+export const ADMIN_EMAILS = [
+  "pratham.goyalhariyana@gmail.com",
+  "avularudrasekharreddy@gmail.com"
+];
 export const USERS = [
 ];
