@@ -29,8 +29,21 @@ const [projectObjections, setProjectObjections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [chartData, setChartData] = useState({ objectionBreakdown: [], pitchTrend: [] });
+  
+  // Log chartData changes for debugging
+  useEffect(() => {
+    console.log('Chart data updated:', chartData);
+    if (chartData?.pitchTrend) {
+      console.log('Pitch trend data:', chartData.pitchTrend);
+      console.log('Pitch trend data type:', typeof chartData.pitchTrend);
+      console.log('Pitch trend data length:', chartData.pitchTrend.length);
+      console.log('First pitch trend item:', chartData.pitchTrend[0]);
+    }
+  }, [chartData]);
   const [selectedProject, setSelectedProject] = useState("All Projects");
   const [selectedSalesperson, setSelectedSalesperson] = useState("All Salespersons");
+  const [timePeriod, setTimePeriod] = useState("day");
+  const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -39,15 +52,20 @@ const [projectObjections, setProjectObjections] = useState([]);
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => fetchStatsAndRecordings(), 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timePeriod]); // Add timePeriod as a dependency
 
   const fetchStatsAndRecordings = async (forceRefresh = false) => {
     setLoading(true);
+    setIsLoadingChart(true);
     try {
       console.log(' Fetching admin dashboard data...', forceRefresh ? '(FORCE REFRESH)' : '');
       
-      // Add cache busting for force refresh
-      const url = `${import.meta.env.VITE_BACKEND_URL}/api/admin/dashboard${forceRefresh ? '?t=' + Date.now() : ''}`;
+      // Add cache busting for force refresh and include time period
+      const params = new URLSearchParams();
+      if (forceRefresh) params.append('t', Date.now());
+      params.append('period', timePeriod);
+      
+      const url = `${import.meta.env.VITE_BACKEND_URL}/api/admin/dashboard?${params.toString()}`;
       console.log(' API URL:', url);
       
       const res = await fetch(url, {
@@ -62,6 +80,8 @@ const [projectObjections, setProjectObjections] = useState([]);
       
       const data = await res.json();
       console.log(' Raw API Response:', JSON.stringify(data, null, 2));
+      console.log(' ChartData structure:', data.chartData);
+      console.log(' PitchTrend data:', data.chartData?.pitchTrend);
       
       if (res.ok) {
         const newStats = {
@@ -71,6 +91,9 @@ const [projectObjections, setProjectObjections] = useState([]);
         };
         
         console.log(' Setting new stats:', newStats);
+        console.log(' Chart data received:', data.chartData);
+        console.log(' Pitch trend data:', data.chartData?.pitchTrend);
+        
         setStats(newStats);
         setRecordings(data.recent || []);
         setChartData(data.chartData || { objectionBreakdown: [], pitchTrend: [] });
@@ -85,6 +108,7 @@ const [projectObjections, setProjectObjections] = useState([]);
       setError("Network error: " + err.message);
     } finally {
       setLoading(false);
+      setIsLoadingChart(false);
     }
   };
 
@@ -102,8 +126,34 @@ const [projectObjections, setProjectObjections] = useState([]);
     currentPage * itemsPerPage
   );
 
-  const uniqueProjects = [...new Set(recordings.map((r) => r.project))];
+  const uniqueProjects = [...new Set(recordings.map((r) => r.project).filter(Boolean))];
   const uniqueSalespersons = [...new Set(recordings.map((r) => r.userName || r.email))];
+
+  // Helper function to render project objections in a table
+  const renderProjectObjections = (objections) => {
+    if (!objections || objections.length === 0) {
+      return <div className="text-gray-400 text-xs italic">No objection data available</div>;
+    }
+
+    return (
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            <th className="text-left text-gray-500 pb-1">Objection</th>
+            <th className="text-left text-gray-500 pb-1">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {objections.map((obj, i) => (
+            <tr key={i} className="hover:bg-gray-50">
+              <td className="text-gray-700 py-1">{obj.name || 'No objections'}</td>
+              <td className="text-gray-700 py-1">{obj.count || 0}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
 
   // Leaderboard calculation
   const leaderboard = React.useMemo(() => {
@@ -164,63 +214,245 @@ const [projectObjections, setProjectObjections] = useState([]);
           <p className="text-sm text-gray-500">Pitch Score Avg.</p>
           <p className="text-2xl font-bold text-gray-800 mt-2">{stats.pitchAvg}</p>
         </div>
-        <div
-  className="bg-white rounded-xl p-4 shadow-md cursor-pointer transition hover:shadow-lg"
-  onClick={() => setShowProjectObjections((v) => !v)}
->
-  <p className="text-sm text-gray-500">Top Objections Found</p>
-  <p className="text-2xl font-bold text-gray-800 mt-2">{stats.topObjections}</p>
-  <p className="text-xs text-blue-600 mt-1">{showProjectObjections ? "Hide" : "Show"} project-wise</p>
-  {showProjectObjections && (
-  <div className="mt-4 border-t pt-2 max-h-64 overflow-y-auto space-y-4">
-    {!projectObjections || projectObjections.length === 0 ? (
-      <div className="text-gray-400 text-sm">No project data available. Recordings may not have project assignments.</div>
-    ) : (
-      projectObjections.map((proj) => (
-        <div key={proj.project || 'unknown'} className="border-b pb-2 last:border-b-0">
-          <div className="font-semibold text-gray-700 mb-1">{proj.project || 'Unassigned'}</div>
-          {proj.objections && proj.objections.length > 0 ? (
-            <table className="w-full text-xs">
-              <thead>
-                <tr>
-                  <th className="text-left text-gray-500 pb-1">Objection</th>
-                  <th className="text-left text-gray-500 pb-1">Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {proj.objections.map((obj, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="text-gray-700 py-1">{obj.name || 'No objections'}</td>
-                    <td className="text-gray-700 py-1">{obj.count || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="text-gray-400 text-xs italic">No objection data for this project</div>
+        <div className="bg-white rounded-xl p-4 shadow-md">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-gray-500">Top Objections Found</p>
+              <p className="text-2xl font-bold text-gray-800">{stats.topObjections}</p>
+            </div>
+            <button 
+              onClick={() => setShowProjectObjections((v) => !v)}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              {showProjectObjections ? 'Hide details' : 'Show details'}
+            </button>
+          </div>
+          
+          {showProjectObjections && (
+            <div className="mt-3">
+              <div className="mb-3">
+                <label htmlFor="projectFilter" className="block text-sm font-medium text-gray-700 mb-1">
+                  Filter by Project:
+                </label>
+                <select
+                  id="projectFilter"
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                >
+                  <option value="All Projects">All Projects</option>
+                  {uniqueProjects.filter(p => p).map((project) => (
+                    <option key={project} value={project}>
+                      {project}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="border-t pt-2 max-h-64 overflow-y-auto space-y-4">
+                {!projectObjections || projectObjections.length === 0 ? (
+                  <div className="text-gray-400 text-sm py-2">
+                    No project data available. Recordings may not have project assignments.
+                  </div>
+                ) : selectedProject === "All Projects" ? (
+                  // Show all projects when 'All Projects' is selected
+                  projectObjections.map((proj) => (
+                    <div key={proj.project || 'unknown'} className="border-b pb-2 last:border-b-0">
+                      <div className="font-semibold text-gray-700 mb-1">{proj.project || 'Unassigned'}</div>
+                      {renderProjectObjections(proj.objections)}
+                    </div>
+                  ))
+                ) : (
+                  // Show only selected project
+                  (() => {
+                    const selectedProj = projectObjections.find(p => p.project === selectedProject);
+                    return selectedProj ? (
+                      <div className="border-b pb-2">
+                        <div className="font-semibold text-gray-700 mb-1">{selectedProj.project || 'Unassigned'}</div>
+                        {renderProjectObjections(selectedProj.objections)}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 text-sm py-2">
+                        No data available for the selected project.
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            </div>
           )}
-        </div>
-      ))
-    )}
-  </div>
-)}
 </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-md h-[240px] col-span-1">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Pitch Score Trend</h3>
-          <div className="h-[180px] flex items-end justify-around">
-            {chartData.pitchTrend.slice(0, 7).map((item, index) => (
-              <div key={index} className="flex flex-col items-center">
-                <div 
-                  className="bg-blue-500 w-6 rounded-t" 
-                  style={{ height: `${(item.score / 100) * 120}px` }}
-                ></div>
-                <span className="text-xs text-gray-500 mt-1">{item.day}</span>
-              </div>
-            ))}
+        <div className="bg-white rounded-xl p-4 shadow-md h-[300px] col-span-1 border border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">Pitch Score Trend</h3>
+            <select 
+              value={timePeriod}
+              onChange={(e) => setTimePeriod(e.target.value)}
+              className="text-sm border rounded px-2 py-1 bg-white"
+            >
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+              <option value="year">Yearly</option>
+            </select>
           </div>
+          
+          {isLoadingChart ? (
+            <div className="h-[240px] flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <div className="relative h-[240px]">
+              {/* Y-axis with labels */}
+              <div className="absolute left-0 top-0 bottom-8 w-8 border-r border-gray-200 flex flex-col justify-between">
+                {[10, 8, 6, 4, 2, 0].map((y) => (
+                  <div key={y} className="text-xs text-gray-400 text-right pr-1" style={{
+                    marginTop: y === 10 ? 0 : -8,
+                    marginBottom: y === 0 ? 0 : -8
+                  }}>
+                    {y}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Chart area */}
+              <div className="absolute left-8 right-0 top-0 bottom-8 pl-2 pr-1 overflow-visible">
+                <div className="relative h-full w-full">
+                  {/* Grid lines */}
+                  {[0, 2, 4, 6, 8, 10].map((y) => (
+                    <div 
+                      key={y}
+                      className="absolute left-0 right-0 border-t border-gray-100"
+                      style={{ bottom: `${y * 10}%`, height: '1px' }}
+                    ></div>
+                  ))}
+                  
+                  {/* Bars */}
+                  <div className="flex h-[200px] items-end justify-between gap-1" style={{ minHeight: '200px' }}>
+                    {!chartData?.pitchTrend || !Array.isArray(chartData.pitchTrend) || chartData.pitchTrend.length === 0 ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
+                        <div>No pitch trend data available</div>
+                        <div className="text-xs mt-2 text-gray-500">
+                          {!chartData?.pitchTrend ? 'No data' : 
+                           !Array.isArray(chartData.pitchTrend) ? 'Invalid data format' : 
+                           'No records found for the selected period'}
+                        </div>
+                      </div>
+                    ) : (
+                      chartData.pitchTrend.map((item, index) => {
+                        if (!item || typeof item.score === 'undefined') {
+                          console.warn('Invalid pitch trend item:', item);
+                          return null;
+                        }
+                        
+                        // Only show a subset of labels if there are many data points
+                        const showLabel = chartData.pitchTrend.length <= 7 || 
+                                       index === 0 || 
+                                       index === chartData.pitchTrend.length - 1 ||
+                                       index % Math.ceil(chartData.pitchTrend.length / 4) === 0;
+                        
+                        // Convert score to 0-10 scale (divide by 10 if > 10)
+                        let score = Number(item.score) || 0;
+                        if (score > 10) {
+                          score = score / 10;
+                        }
+                        score = Math.min(Math.max(score, 0), 10);
+                        const count = Number(item.count) || 0;
+                        
+                        // Format date for tooltip
+                        let dateStr = '';
+                        try {
+                          const date = new Date(item.period);
+                          if (!isNaN(date.getTime())) {
+                            dateStr = date.toLocaleDateString('en-US', { 
+                              weekday: 'short', 
+                              month: 'short', 
+                              day: 'numeric',
+                              year: 'numeric'
+                            });
+                          } else {
+                            dateStr = item.period; // Fallback to raw period if date parsing fails
+                          }
+                        } catch (e) {
+                          dateStr = item.period; // Fallback to raw period on error
+                        }
+                        
+                        console.log(`Bar ${index}:`, { 
+                          originalScore: item.score, 
+                          normalizedScore: score, 
+                          count, 
+                          period: item.period,
+                          dateStr
+                        });
+                        
+                        return (
+                          <div key={index} className="flex-1 flex flex-col items-center group h-full" style={{ minHeight: '200px' }}>
+                            <div 
+                              className="w-4/5 mx-auto"
+                              style={{ 
+                                height: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'flex-end',
+                              }}
+                            >
+                              <div 
+                                className="w-full bg-gradient-to-t from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 rounded-t transition-all relative"
+                                style={{
+                                  height: `${score * 10}%`,
+                                  minHeight: '2px',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                }}
+                                title={`${dateStr}\nScore: ${score.toFixed(1)}/10 (${count} ${count === 1 ? 'recording' : 'recordings'})`}
+                              >
+                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                  {dateStr}
+                                  <div className="text-center">
+                                    {score.toFixed(1)}/10 ({count} {count === 1 ? 'recording' : 'recordings'})
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {showLabel && (
+                              <span className="text-xs text-gray-500 mt-1 truncate w-full text-center">
+                                {item.label || 'N/A'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* X-axis with labels */}
+              <div className="absolute left-8 right-0 bottom-0 h-8 flex items-start justify-between px-2">
+                {chartData.pitchTrend.length > 0 && (
+                  <>
+                    <div className="text-xs text-gray-500 text-center w-full">
+                      <div className="flex justify-between px-2">
+                        <span className="w-1/3 text-left">
+                          {chartData.pitchTrend[0].label}
+                        </span>
+                        {timePeriod === 'day' || timePeriod === 'week' ? (
+                          <span className="w-1/3 text-center">
+                            {chartData.pitchTrend[Math.floor(chartData.pitchTrend.length / 2)]?.label || ''}
+                          </span>
+                        ) : null}
+                        <span className="w-1/3 text-right">
+                          {chartData.pitchTrend[chartData.pitchTrend.length - 1].label}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-xl p-4 shadow-md h-[240px] col-span-1">
           <h3 className="text-lg font-semibold mb-4 text-gray-800">Top Objections</h3>
