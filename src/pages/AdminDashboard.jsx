@@ -16,6 +16,9 @@ const getAudioMimeType = (url) => {
 };
 
 const AdminDashboard = () => {
+  const [showProjectObjections, setShowProjectObjections] = useState(false);
+const [projectObjections, setProjectObjections] = useState([]);
+
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     conversationsToday: 0,
@@ -71,8 +74,7 @@ const AdminDashboard = () => {
         setStats(newStats);
         setRecordings(data.recent || []);
         setChartData(data.chartData || { objectionBreakdown: [], pitchTrend: [] });
-        
-        console.log(' Stats successfully updated in state!');
+        setProjectObjections(data.projectObjections || []);
         setError(""); // Clear any previous errors
       } else {
         console.error(" Failed to fetch admin stats:", data);
@@ -162,10 +164,47 @@ const AdminDashboard = () => {
           <p className="text-sm text-gray-500">Pitch Score Avg.</p>
           <p className="text-2xl font-bold text-gray-800 mt-2">{stats.pitchAvg}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-md">
-          <p className="text-sm text-gray-500">Top Objections Found</p>
-          <p className="text-2xl font-bold text-gray-800 mt-2">{stats.topObjections}</p>
+        <div
+  className="bg-white rounded-xl p-4 shadow-md cursor-pointer transition hover:shadow-lg"
+  onClick={() => setShowProjectObjections((v) => !v)}
+>
+  <p className="text-sm text-gray-500">Top Objections Found</p>
+  <p className="text-2xl font-bold text-gray-800 mt-2">{stats.topObjections}</p>
+  <p className="text-xs text-blue-600 mt-1">{showProjectObjections ? "Hide" : "Show"} project-wise</p>
+  {showProjectObjections && (
+  <div className="mt-4 border-t pt-2 max-h-64 overflow-y-auto space-y-4">
+    {!projectObjections || projectObjections.length === 0 ? (
+      <div className="text-gray-400 text-sm">No project data available. Recordings may not have project assignments.</div>
+    ) : (
+      projectObjections.map((proj) => (
+        <div key={proj.project || 'unknown'} className="border-b pb-2 last:border-b-0">
+          <div className="font-semibold text-gray-700 mb-1">{proj.project || 'Unassigned'}</div>
+          {proj.objections && proj.objections.length > 0 ? (
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="text-left text-gray-500 pb-1">Objection</th>
+                  <th className="text-left text-gray-500 pb-1">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proj.objections.map((obj, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="text-gray-700 py-1">{obj.name || 'No objections'}</td>
+                    <td className="text-gray-700 py-1">{obj.count || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="text-gray-400 text-xs italic">No objection data for this project</div>
+          )}
         </div>
+      ))
+    )}
+  </div>
+)}
+</div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
